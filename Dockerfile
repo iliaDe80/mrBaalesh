@@ -1,3 +1,4 @@
+# پایه: Python 3.11 slim
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -8,15 +9,17 @@ RUN apt-get update && apt-get install -y \
     libcairo2 \
     libpango-1.0-0 \
     libpangocairo-1.0-0 \
-    libgdk-pixbuf2.0-0 \
+    libgdk-pixbuf-xlib-2.0-0 \
     libffi-dev \
     shared-mime-info \
     fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+# کپی پروژه
 COPY . .
 
-CMD ["python", "main.py"]
+# نصب پکیج‌های Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# اجرای بات
+CMD ["python", "bot.py"]
