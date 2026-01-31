@@ -1,0 +1,4 @@
+python-telegram-bot
+jinja2
+weasyprint
+jdatetime
