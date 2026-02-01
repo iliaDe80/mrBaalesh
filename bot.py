@@ -1,69 +1,87 @@
 import io
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
-import jdatetime
-import os
+
 
 TOKEN = os.getenv("TOKEN")
 
-# بارگذاری تمپلیت
+
+# Template
+# --------------------
 env = Environment(loader=FileSystemLoader("templates"))
 template = env.get_template("invoice.html")
 
-invoice_counter = 750  # شماره شروع فاکتور
 
+# Sender Info
+# --------------------
+SENDER_ADDRESS = "مستربالش ( دارابی )"
+SENDER_PHONE = "09021042824"
+
+
+# Utils
+# --------------------
+def parse_customers(text: str):
+    parts = [p.strip() for p in text.split("✅") if p.strip()]
+    customers = []
+
+    for p in parts:
+        lines = [l.strip() for l in p.split("\n") if l.strip()]
+        if len(lines) < 2:
+            continue
+
+        customers.append({
+            "address": "<br>".join(lines[:-1]),
+            "phone": lines[-1]
+        })
+
+    return customers 
+
+
+def chunk(lst, size):
+    """گروه‌بندی ۸تایی برای هر صفحه"""
+    return [lst[i:i + size] for i in range(0, len(lst), size)]
+
+
+# Handler
+# --------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global invoice_counter
+    customers = parse_customers(update.message.text)
 
-    text = update.message.text.strip()
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-
-    if len(lines) < 4:
-        await update.message.reply_text("❌ نام، شماره تماس، کدپستی و آدرس لازم است")
+    if not customers:
+        await update.message.reply_text("❌ فرمت پیام اشتباه است")
         return
 
-    name = lines[0]
-    phone = lines[1]
-    plate = lines[2]
-    address = "<br>".join(lines[3:])
+    pages = chunk(customers, 8) 
 
-    if not phone.isdigit():
-        await update.message.reply_text("❌ شماره تماس معتبر نیست")
-        return
+    html = template.render(
+        pages=pages,
+        senderAddress=SENDER_ADDRESS,
+        senderPhone=SENDER_PHONE
+    )
 
-    if not plate.isdigit():
-        await update.message.reply_text("❌ کدپستی معتبر نیست")
-        return
-
-    invoice_counter += 1
-
-    data = {
-        "invoiceNumber": invoice_counter,
-        "date": jdatetime.datetime.now().strftime("%Y/%m/%d"),
-        "senderName": "مستر بالش",
-        "senderPhone": "0902xxxxxxx",
-        "customerName": name,
-        "customerPhone": phone,
-        "customerPlate": plate,
-        "customerAddress": address
-    }
-
-    html = template.render(**data)
-
-    # ایجاد PDF در حافظه بدون ذخیره روی دیسک
     pdf_buffer = io.BytesIO()
-    css = CSS(string='''
-        @page { size: 70mm 90mm; margin: 5px; } body { margin: 0; padding: 0; }
-    ''')
+
+    css = CSS(string="""
+        @page {
+            size: A4;
+            margin: 0;
+        }
+    """)
+
     HTML(string=html).write_pdf(pdf_buffer, stylesheets=[css])
-    pdf_buffer.seek(0)  # برگشت به ابتدای بافر
+    pdf_buffer.seek(0)
 
-    # ارسال مستقیم PDF به تلگرام
-    await update.message.reply_document(document=pdf_buffer, filename=f"فاکتور-{invoice_counter}-({name}).pdf")
+    await update.message.reply_document(
+        document=pdf_buffer,
+        filename="فاکتورهای امروز.pdf"
+    )
 
-# راه‌اندازی بات
+
+# App
+# --------------------
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
